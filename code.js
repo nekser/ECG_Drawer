@@ -1,3 +1,36 @@
+
+/*
+*Double tap event
+*
+*/
+(function($){ 
+    $.event.special.doubletap = {
+        bindType: 'touchend',
+        delegateType: 'touchend',
+     
+        handle: function(event) {
+            var handleObj   = event.handleObj,
+                targetData  = jQuery.data(event.target),
+                now         = new Date().getTime(),
+                delta       = targetData.lastTouch ? now - targetData.lastTouch : 0,
+                delay       = delay == null ? 300 : delay;
+     
+                if (delta < delay && delta > 30) {
+                    targetData.lastTouch = null;
+                    event.type = handleObj.origType;
+                    ['clientX', 'clientY', 'pageX', 'pageY'].forEach(function(property) {
+                    event[property] = event.originalEvent.changedTouches[0][property];
+                })
+     
+                // let jQuery handle the triggering of "doubletap" event handlers
+                handleObj.handler.apply(this, arguments);
+            } else {
+                targetData.lastTouch = now;
+            }
+        }
+    };
+})(jQuery);
+
 /**
  * Painter class manages
  */
@@ -39,9 +72,7 @@ function ECGPainter() {
                 /*
                 *Draw ticks
                 */
-                //TODO: REPLACE 6000!
-                for (var i = 0; i < 6000; i+=FREQUENCY/2){
-                    //TODO: Refactor this block
+                for (var i = 0; x <= _x+tapeWidth; i+=FREQUENCY/2){
                     x = _x - begintime * FREQUENCY * cellSize + i*cellSize;
                     if(x > _x+tapeWidth || x < _x){
                         if(i%FREQUENCY == 0){
@@ -456,6 +487,7 @@ function ECGPainter() {
     var lastX = 0;
     var startMoving;
     var endMoving;
+    var longTapTimer;
     /*
     *This closure provide creating canvas
     *and getting graphic context
@@ -495,32 +527,14 @@ function ECGPainter() {
     *Events' handlers
     *provide scrolling tapes, select specific tape etc.
     */
+    /*
+    *Mouse handlers
+    */
     $(context.canvas).on("mousedown", function(e){
-        if(selectedTape != undefined){
-            if(-1 != selectedTape.containPoint(e.pageX, e.pageY)){
-                selecting = true;
-                startMoving = e.pageX;                      
-            }
-        }
-        if(selectedTape === undefined){
-            dragging = true;
-            lastX = e.pageX;
-        }
+        onMouseDown(e.pageX,e.pageY)
     });
     $(window).on("mousemove", function(e){
-        if(dragging){
-            var delta = e.pageX - lastX;
-            tapePosition = Math.min(tapePosition +  delta, 0)
-            gridOrigin.x = tapePosition;
-            lastX = e.pageX;
-            redraw();  // redraw
-        }
-        if(selecting){
-            if(-1 != selectedTape.containPoint(e.pageX, e.pageY)){
-                endMoving = e.pageX;
-                redraw();
-            }
-        }
+        onMove(e.pageX, e.pageY);
     });
     $(context.canvas).on("click", function(e){
         if(selectedTape){
@@ -528,11 +542,7 @@ function ECGPainter() {
         }
     });
     $(window).on("mouseup", function(e){
-      dragging = false;
-      selecting = false;
-      lastX = 0;
-      startMoving = 0;
-      endMoving = 0;
+      onMouseUp();
     })
     context.canvas.onwheel = function(e){
         if(selectedTape === undefined){
@@ -548,29 +558,103 @@ function ECGPainter() {
     *to select this tape for some actions, e.g. selecting area or comment signal
     */
     $(context.canvas).on('dblclick' , function(e){
+        onSelectTape(e.pageX, e.pageY);
+    });
+    /*
+    *Touch handlers
+    */
+    $(context.canvas).on('touchstart',function(event){
+        event.preventDefault();
+        event.stopPropagation();
+
+        var e = event.originalEvent;
+        var touch = e.targetTouches[0];
+
+        onMouseDown(touch.pageX, touch.pageY)
+    });
+    $(context.canvas).on('touchmove', function(event){
+        event.preventDefault();
+        event.stopPropagation();
+
+
+        var e = event.originalEvent;
+        var touch = e.targetTouches[0];
+      
+        onMove(touch.pageX, touch.pageY);
+    });
+    $(context.canvas).on('touchend', function(event){
+        event.preventDefault();
+        event.stopPropagation();
+
+        var e = event.originalEvent;
+        var touch = e.targetTouches[0];
+        
+        onMouseUp();
+    });  
+    $(context.canvas).on('doubletap', function(touch){
+        onSelectTape(touch.pageX, touch.pageY);
+    });
+    /*
+    *General handlers
+    */
+    function onMouseDown(x, y){
+        if(selectedTape != undefined){
+            if(-1 != selectedTape.containPoint(x, y)){
+                selecting = true;
+                startMoving = x;                      
+            }
+        }
+        if(selectedTape === undefined){
+            dragging = true;
+            lastX = x;
+        }
+    }
+    function onMouseUp(){
+        dragging = false;
+        selecting = false;
+        lastX = 0;
+        startMoving = 0;
+        endMoving = 0;
+    }
+    function onMove(x, y){
+        if(dragging){
+            var delta = x - lastX;
+            tapePosition = Math.min(tapePosition +  delta, 0)
+            gridOrigin.x = tapePosition;
+            lastX = x;
+            redraw();  // redraw
+        }
+        if(selecting){
+            if(-1 != selectedTape.containPoint(x, y)){
+                endMoving = x;
+                redraw();
+            }
+        }
+    }
+    function onSelectTape(x, y){
         $.each(containers, function(index, container){
-            if(container.containPoint(e.pageX)){
+            if(container.containPoint(x)){
                 $.each(container.tapes, function(i, tape){
                     var copy;
-                    if(-1 != (copy = tape.containPoint(e.pageX, e.pageY))){
-                            if(tape === selectedTape){
-                                if(selectedTapeCopy === copy){
-                                    selectedTape = undefined;
-                                    redraw();
-                                } else {
-                                    selectedTapeCopy = copy;
-                                    redraw();
-                                }
+                    if(-1 != (copy = tape.containPoint(x, y))){
+                        if(tape === selectedTape){
+                            if(selectedTapeCopy === copy){
+                                selectedTape = undefined;
+                                redraw();
                             } else {
-                                selectedTape = tape;
                                 selectedTapeCopy = copy;
                                 redraw();
                             }
+                        } else {
+                            selectedTape = tape;
+                            selectedTapeCopy = copy;
+                            redraw();
+                        }
                     }
                 });
             }
         });
-    })
+    }
     /*
     *Redraw all viewer
     */
@@ -655,10 +739,10 @@ $(function(){
     getSignal(function(data){
       var painterConfig = {
             numberOfChannels: data.channels.length,
-            tableColumns: 3,
-            tapeWidth: 200,
+            tableColumns: 2,
+            tapeWidth: 300,
             enableDescriptions: true,
-            lines: 2,
+            lines: 1,
             timeline: true,
             annotations: true
       };
