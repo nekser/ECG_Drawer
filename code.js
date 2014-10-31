@@ -229,7 +229,7 @@ function ECGPainter() {
             *Translate begintime to pixels
             */
             var time = -begintime * FREQUENCY * cellSize
-            var leftColumn = time / squareSize
+            var leftColumn = Math.max( time / squareSize , -1)
             var rightColumn = tapeWidth / squareSize
             for (var row = 0; row < this.__rows; row++) {
                 for (var column = leftColumn; column < rightColumn; column++) {
