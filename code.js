@@ -358,8 +358,8 @@ function ECGPainter() {
             context.globalAlpha = 1;
           
             return  {
-                        begin: this.getTime(start),
-                        end: this.getTime(end)
+                        begin: this.getTime(start + copy*tapeWidth),
+                        end: this.getTime(end + copy*tapeWidth)
                     };
            
         },
