@@ -15,13 +15,13 @@
                 delta       = targetData.lastTouch ? now - targetData.lastTouch : 0,
                 delay       = delay == null ? 300 : delay;
      
-                if (delta < delay && delta > 30) {
-                    targetData.lastTouch = null;
-                    event.type = handleObj.origType;
-                    ['clientX', 'clientY', 'pageX', 'pageY'].forEach(function(property) {
-                    event[property] = event.originalEvent.changedTouches[0][property];
-                })
-     
+            if (delta < delay && delta > 30) {
+                targetData.lastTouch = null;
+                event.type = handleObj.origType;
+                ['pageX', 'clientY', 'pageX', 'pageY'].forEach(function(property) {
+                event[property] = event.originalEvent.changedTouches[0][property];
+            })
+ 
                 // let jQuery handle the triggering of "doubletap" event handlers
                 handleObj.handler.apply(this, arguments);
             } else {
@@ -30,7 +30,6 @@
         }
     };
 })(jQuery);
-
 /**
  * Painter class manages
  */
@@ -60,7 +59,7 @@ function ECGPainter() {
                 /*
                 *Initial points
                 */
-                var x = _x - begintime * FREQUENCY * cellSize;
+                var x = _x - begintime * PX_FREQUENCY;
                 var y = _y + ECGContainer.HEIGHT - squareSize/2;
                 /*
                 *Draw horizontal line
@@ -68,23 +67,23 @@ function ECGPainter() {
                 context.beginPath();
                 context.moveTo(_x,y);
                 context.lineTo(_x+tapeWidth,y);
-                context.stroke();
+
+                //time.setSeconds(Math.ceil(begintime));
                 /*
                 *Draw ticks
                 */
                 for (var i = 0; x <= _x+tapeWidth; i+=FREQUENCY/2){
-                    x = _x - begintime * FREQUENCY * cellSize + i*cellSize;
+                    x = _x - begintime * PX_FREQUENCY + i*cellSize;
                     if(x > _x+tapeWidth || x < _x){
                         if(i%FREQUENCY == 0){
                             time.setSeconds(time.getSeconds() + 1);
                         }
                         continue;
                     }
-                    
-                    context.beginPath();
+                
                     context.moveTo(x, y);
                     context.lineTo(x, y - squareSize / 4); //draw subtick
-                    context.stroke();
+
                     /*
                     *format time like "00m:00s" and print it
                     */
@@ -97,6 +96,7 @@ function ECGPainter() {
                         time.setSeconds(time.getSeconds() + 1);
                     }
             }
+            context.stroke();
         }
 
         ECGContainer.AMOUNT++;
@@ -182,98 +182,57 @@ function ECGPainter() {
         /*
         *Draw single grid-square
         */
-        this.drawSquare = function(_x, _y, row, column){
-            var x = _x + column * squareSize;
-            var y = _y + row * squareSize;
-            var GRID_LINES = 6;
-            var lineLength = 0;
-            context.lineWidth = 0.5;
-            context.strokeStyle = "rgb(255, 0, 0)";
-            context.beginPath();
-            /*
-            *Draw vertical lines
-            */
-            for (var i = 0; i < GRID_LINES; i++) {
-                if(x+i*cellSize < _x+tapeWidth && x + i*cellSize > _x){
-                    context.moveTo(x+i*cellSize,y);
-                    context.lineTo(x+i*cellSize,y+squareSize)
-                }
-            }
-            /*
-            *Draw horizontal lines
-            *Firstly, we calculate length of line to 
-            *avoid drawing lines out of container's borders
-            */
-            if(x+squareSize > _x+tapeWidth){
-                lineLength =  _x+tapeWidth - x;
-            }else if(x < _x && x+squareSize > _x){
-                lineLength = x + squareSize - _x;
-                x = _x;
-            } else if (x < _x && x + squareSize <= _x){
-                lineLength = 0
-            } else {
-                lineLength = squareSize
-            }
-
-            for(var i = 0; i < GRID_LINES; i++){
-                context.moveTo(x,y+i*cellSize);
-                context.lineTo(x+lineLength,y+i*cellSize)
-            }
-            context.stroke();
-        }
+       
         /*
         *Draw grid of tape
         */
         this.drawGrid = function(x, y, begintime){
-            /*
-            *Translate begintime to pixels
-            */
-            var time = -begintime * FREQUENCY * cellSize
-            var leftColumn =  time / squareSize
-            var rightColumn = tapeWidth / squareSize
-            for (var row = 0; row < this.__rows; row++) {
-                for (var column = leftColumn; column < rightColumn; column++) {
-                    this.drawSquare(x, y, row, column)
-                }
-            }
+            context.drawImage(buffer, x,y);
         };  
         /*
         *Signal drawing function
         */
         this.drawSignal = function(_x, _y, begintime) {        
             var y_base = _y + squareSize * 3;
-            /*
-            *Pixels to draw 1 microvolt
-            */
-            var PX_PER_MCV = CALIBRATION * cellSize / 1000.0;
+            
             /*
             *Set initial points to rendering 
             */
-            var x = _x - begintime * FREQUENCY * cellSize;
+            var x = _x //- begintime * PX_FREQUENCY;
             /*
             *Why do we substract value, not add?
             */
-            var y = y_base - this.signal.data[0] * PX_PER_MCV;
-
+            var startValue = Math.floor(begintime * DOTS_PER_SEC);
+            var y = y_base - this.signal.data[startValue] * PX_PER_MCV;
+            var step = 1;
             context.lineWidth = 2;
             context.strokeStyle = "blue";
             context.beginPath();
             context.moveTo(x, y);
+            /*
+            *Make decimation of signal to provide more performance
+            */
+            if(resamling){
+                startValue += decimation_ratio - (startValue % decimation_ratio);
+                step = decimation_ratio;
+            }
 
-            for (var i = 0; i < this.signal.data.length;i++) {  
-                x += 2 * squareSize / SAMPLING_FREQUENCY;
+            for (var i = startValue; i < this.signal.data.length;i+=step) {  
+                 x += MM_TO_DOTS * step;
                 /*
                 *To not draw a signal outside the 
                 *Beside, this block provide more productivity. (drawing is faster)
                 */
-                if(x < _x+tapeWidth && x > _x){
-                    y = y_base- this.signal.data[i] * PX_PER_MCV
+                if(x < _x+tapeWidth){
+                    y = y_base - this.signal.data[i] * PX_PER_MCV
                     context.lineTo(x, y)
                 } else {
                     context.moveTo(x,y)
                 }
             }
             context.stroke();
+        };
+        this.drawDescriptions = function(_x, _y){
             /*
             *Render descriptions, annotations and other information
             *from channel
@@ -281,8 +240,8 @@ function ECGPainter() {
             context.strokeStyle = "black";
             context.font = '12pt Times-new-roman';
             context.strokeText(this.signal.name, _x + 10, _y + squareSize);
-            if(enableDescriptions){
-                context.strokeText(this.signal.description, tapeWidth - squareSize * 8, _y + squareSize);
+            if(dimension){
+                context.strokeText(FREQUENCY.toString()+" mm/sec, "+CALIBRATION.toString()+ " mm/mV", this.x+tapeWidth - squareSize * 8, _y + squareSize);
             }
         };
         /*
@@ -294,37 +253,40 @@ function ECGPainter() {
             var MSEC_IN_SEC = 1000;
             //TODO: DELETE gridOrigin.x!
             time.setMilliseconds((position-gridOrigin.x- this.x)/cellSize/FREQUENCY*MSEC_IN_SEC)
-            return ('0'+time.getMinutes()).slice(-2)+":"+('0'+time.getSeconds()).slice(-2)+":"+('00'+time.getMilliseconds()).slice(-3)
-        }
+            return time;
+        };
         /*
         *Overlays
         */
         this.drawAnnotations = function(offset, y ){
-            var annotations = this.signal.annotation_data;
-            var x = this.x;
+            var annotations = this.signal.annotation_data,
+                x = this.x,
+                position;
+
             if(annotations != undefined){
                 $.each(annotations, function(index, annotation){
                     var ms = parseFloat(annotation.time.slice(-3));
-                    if(ms === NaN){
+                    if(isNaN(ms)){
                         throw new Error("Parsing annotation time(msec) error");
                     }
                     var s = parseFloat(annotation.time.slice(6,8));
-                    if(s === NaN){
+                    if(isNaN(s)){
                          throw new Error("Parsing annotation time(sec) error");
                     }
                     var m = parseFloat(annotation.time.slice(3,5));
-                    if(m === NaN){
+                    if(isNaN(m)){
                          throw new Error("Parsing annotation time(m) error");
                     }
                     var h = parseFloat(annotation.time.slice(0,2));
-                    if(h === NaN){
+                    if(isNaN(h)){
                          throw new Error("Parsing annotation time(h) error");
                     }
                     var time = ms/1000 + s + m * 60 + h * 3600;  
                     /*
                     *Translate time to pixels
                     */
-                    var position =  (-offset + time) * FREQUENCY * cellSize
+                    position =  (time - offset) * PX_FREQUENCY
+                    
                     context.strokeStyle = "black";
                     context.font = '11pt Arial';
                     if(position > x && position < x + tapeWidth){
@@ -351,21 +313,34 @@ function ECGPainter() {
             context.closePath();
             context.stroke();
         },
+        selectSignal: function(copy, x, y){
+            var radius = cellSize,
+                signalPos = Math.floor((x - this.x -gridOrigin.x+ tapeWidth*copy) / cellSize / 10 * SAMPLE_RATE),
+             
+                y_base = this.copies[copy] + squareSize * 3,
+                _x,
+                _y;
+            if(this.signal.data[signalPos] != null){
+                _x = x;
+                _y = y_base - this.signal.data[signalPos] * PX_PER_MCV
+            }
+            context.strokeStyle = "green";
+            context.lineWidth = 2
+            context.beginPath();
+            context.arc(_x, _y, radius, 0, 2 * Math.PI);
+            context.stroke();
+        },
         /*
         *Draw selection on the tape
         *@param copy - number of copy of selected tape
         *@param start - begin time of selection
         *@param end - end time of selection
         *@return object { 
-        *                  begin - time 00m:00s:000ms
-        *                  end - time 00m:00s:000ms
+        *                  begin - Date object
+        *                  end - Date object
         *               }
         */
         selectArea: function(copy, start, end){
-            /*
-            *TODO: this value shold control in painter class, not here
-            */
-            var gridOffset = 10;
             /*
             *Swap end and start if it's necessary
             */
@@ -379,12 +354,12 @@ function ECGPainter() {
             */
             context.strokeStyle = "blue";
             context.globalAlpha = 0.3;
-            context.fillRect(start - gridOffset, this.copies[copy], end - start, squareSize * 6);
+            context.fillRect(start, this.copies[copy], end - start, squareSize * 6);
             context.globalAlpha = 1;
           
             return  {
-                        begin: this.getTime(start - gridOffset),
-                        end: this.getTime(end - gridOffset)
+                        begin: this.getTime(start),
+                        end: this.getTime(end)
                     };
            
         },
@@ -411,7 +386,7 @@ function ECGPainter() {
         *Allow to get signal value by time
         */
         getSignalValue: function(copy, time){
-            var position = Math.ceil(time*FREQUENCY*SAMPLING_FREQUENCY/10);
+            var position = Math.ceil(time*DOTS_PER_SEC);
             return this.signal.data[position];
         },
         /*
@@ -432,31 +407,40 @@ function ECGPainter() {
                     //TODO: Maybe do some logs
                 }
             }
+            this.drawDescriptions(x, y);
         }
     }
     /*
+    *Temporary buffer for ecg_grid
+    */
+    var buffer  = document.createElement("canvas");
+    /*
+    *Temporary buffer for single grid's square
+    */
+    var squareBuffer = document.createElement("canvas");
+    /*
     *Constants-block
     */
-    var ROWS_IN_TAPE = 6.5;
-    var FREQUENCY = 25; /*mm per sec*/
-    var SAMPLING_FREQUENCY = 50; /*dots per centimeter*/
+    var ROWS_IN_TAPE = 6.5; /* 6 ROWS + 0.5 square for timeline */
+    var FREQUENCY = 25; /* mm per sec */
+    var SAMPLE_RATE = 50; /* dots per centimeter */
     var CALIBRATION = 10; /* mm per millivolt */
     /*
     *Variables-block
     */
-    /*
-     *Graphic 2d context
-    */
-    var canvas;
-    var context;
-    // 1mm cell
-    var cellSize = get_px_in_mm();
-    // 5mm square
-    var squareSize = 5 * cellSize;
-
+    var canvas; /* The main canvas */
+    var context; /* and its graphic context */
     
+    var cellSize = get_px_in_mm(); /* 1mm cell */
+    var squareSize = 5 * cellSize; /* 5mm square */
 
-    var signalLength = 0;
+    var PX_FREQUENCY = FREQUENCY * cellSize;
+    
+    var PX_PER_MCV = CALIBRATION * cellSize / 1000.0; /* Pixels to draw 1 microvolt */
+    var DOTS_PER_SEC = FREQUENCY * SAMPLE_RATE / 10; /* signal's dots per 1 sec */
+    var MM_TO_DOTS = 2 * squareSize / SAMPLE_RATE; /* mm to signal's dots translating */
+    var resamling = false; /* Flag to provide using resampling or not */
+    var decimation_ratio = 10; /* Ratio of signal's decimation (if resampling is turned on) */
     /*
     *Viewer's configuration
     */
@@ -466,28 +450,35 @@ function ECGPainter() {
     var multiline;
     var lines;
     var enableTimeline;
-    var enableDescriptions;
+    var dimension;
     var annotations;
-    /*
-    *Last selected tape and its copy-number
-    */
-    var selectedTape;
-    var selectedTapeCopy;
+
     // Reg grid geometry
     var gridOrigin = {
         x: 0
-    }
-    var containers = [];
+    };
+    var containers = []; /* Array of ecg containers */
     /*
     *Vatiables for mouse and touch events
     */
-    var dragging = false;
-    var selecting = false;
-    var tapePosition = 0;
+    var startTouch; /* time */
+    var tapEvent; /* to detect single tap event*/
+    var scrolling = false; /* to detect scrolling viewer */
+    var selecting = false; /* to detect selecting single tape */
+    var tapePosition = 0; 
     var lastX = 0;
-    var startMoving;
-    var endMoving;
-    var longTapTimer;
+    var startMoving; /* to provide selecting single tape */
+    var endMoving; /* to provide selecting single tape */
+    var longTapDetect = false; /* flag to detect a long tap event */
+    /*
+    *Selection variables
+    */
+    var selectedTape;         /* Last selected tape  */
+    var selectedTapeCopy;     /* and its copy's number */
+    var selectedArea;         /* object of selected tape borders */
+    var selectedSignalArray;  /* array of selected signal dots */
+    var selectTapeCallback;   /* function */
+    var selectSignalCallback; /* function */
     /*
     *This closure provide creating canvas
     *and getting graphic context
@@ -522,6 +513,63 @@ function ECGPainter() {
         for(var i = 0; i < tableColumns; i++){
             containers.push(new ECGContainer());
         }
+
+        drawSquareBuffer()
+    }
+    /*
+    *Draw single grid square
+    *to provide more performance
+    */
+    function drawSquareBuffer(){
+        var GRID_LINES = 6;
+        var x = 0;
+        var y = 0;
+        
+        squareBuffer.width = squareSize;
+        squareBuffer.height = squareSize;
+        ctx = squareBuffer.getContext('2d');
+       
+        ctx.lineWidth = 0.5;
+        ctx.strokeStyle = "rgb(255, 0, 0)";
+        
+        ctx.beginPath();
+        for (var i = 0; i < GRID_LINES; i++) {
+                ctx.moveTo(x+i*cellSize,y);
+                ctx.lineTo(x+i*cellSize,y+squareSize)
+                ctx.moveTo(x,y+i*cellSize);
+                ctx.lineTo(x+squareSize,y+i*cellSize)
+        }
+
+        ctx.lineWidth = 0.7;
+        ctx.moveTo(x,y)
+        ctx.lineTo(x + squareSize, y);
+        ctx.lineTo(x + squareSize, y + squareSize);
+        ctx.lineTo(x, y + squareSize);
+        ctx.closePath();
+        ctx.stroke();
+    }
+    function drawECGGrid(begintime){
+        buffer.width = tapeWidth;
+        buffer.height = 6 * squareSize;
+        buffer.ctx = buffer.getContext('2d');
+        /*
+        *Translate begintime to pixels
+        */
+        var time = -(begintime) * PX_FREQUENCY
+        var leftColumn = time / squareSize
+        var rightColumn = tapeWidth / squareSize
+        leftColumn = leftColumn-Math.ceil(leftColumn)
+        for (var row = 0; row < Math.floor(ROWS_IN_TAPE); row++) {
+            for (var column = leftColumn; column < rightColumn; column++) {
+                drawSquare(row, column, buffer.ctx)
+            }
+        }
+    }
+    function drawSquare(row, column, bufctx){
+        var x = column * squareSize;
+        var y = row * squareSize;
+
+        bufctx.drawImage(squareBuffer,x,y);     
     }
     /*
     *Events' handlers
@@ -537,9 +585,7 @@ function ECGPainter() {
         onMove(e.pageX, e.pageY);
     });
     $(context.canvas).on("click", function(e){
-        if(selectedTape){
-            selectedTape.getSignalValue(selectedTapeCopy, (selectedTapeCopy * tapeWidth-gridOrigin.x + e.pageX)/(cellSize*FREQUENCY));
-        }
+       singleTap(e);
     });
     $(window).on("mouseup", function(e){
       onMouseUp();
@@ -554,10 +600,10 @@ function ECGPainter() {
         }
     }
     /*
-    *Handler to provide double-clicking on specific tape
+    *Handler to provide double-clicking/double-tapping on specific tape
     *to select this tape for some actions, e.g. selecting area or comment signal
     */
-    $(context.canvas).on('dblclick' , function(e){
+    $(context.canvas).on('dblclick doubletap', function(e){
         onSelectTape(e.pageX, e.pageY);
     });
     /*
@@ -570,7 +616,16 @@ function ECGPainter() {
         var e = event.originalEvent;
         var touch = e.targetTouches[0];
 
-        onMouseDown(touch.pageX, touch.pageY)
+        startTouch = new Date();
+        tapEvent = touch;
+        longTapDetect = true;
+        /*Long tap detect*/
+        setTimeout(function(){
+            if(longTapDetect){
+                longTap(touch);
+            }
+        }, 300);
+        onMouseDown(touch.pageX, touch.pageY);
     });
     $(context.canvas).on('touchmove', function(event){
         event.preventDefault();
@@ -579,7 +634,8 @@ function ECGPainter() {
 
         var e = event.originalEvent;
         var touch = e.targetTouches[0];
-      
+        longTapDetect = false;
+
         onMove(touch.pageX, touch.pageY);
     });
     $(context.canvas).on('touchend', function(event){
@@ -588,12 +644,36 @@ function ECGPainter() {
 
         var e = event.originalEvent;
         var touch = e.targetTouches[0];
-        
+        longTapDetect = false;
+        var touchTime = new Date().getMilliseconds() - startTouch.getMilliseconds();
+        /* Single tap detect */
+        if(touchTime < 100){
+            singleTap();
+        } 
         onMouseUp();
-    });  
-    $(context.canvas).on('doubletap', function(touch){
-        onSelectTape(touch.pageX, touch.pageY);
-    });
+    }); 
+    /*
+    *Provide Long tap event' handling
+    */ 
+    function longTap(event){
+        if(selectedArea != undefined){
+            if(selectTapeCallback != undefined){
+                selectTapeCallback(selectedArea);
+            }
+        }
+    }
+    /*
+    *Provide quick single tap
+    */
+    function singleTap(event){
+        var e = event || tapEvent,
+            copy;
+        if(selectedTape != undefined){
+            if(selectedTapeCopy === (copy = selectedTape.containPoint(e.pageX, e.pageY))){
+                selectedTape.selectSignal(copy, e.pageX, e.pageY, (-gridOrigin.x)/(cellSize*FREQUENCY))
+            }
+        }
+    }
     /*
     *General handlers
     */
@@ -605,20 +685,28 @@ function ECGPainter() {
             }
         }
         if(selectedTape === undefined){
-            dragging = true;
+            scrolling = true;
+            resamling = true;
             lastX = x;
         }
     }
     function onMouseUp(){
-        dragging = false;
-        selecting = false;
-        lastX = 0;
-        startMoving = 0;
-        endMoving = 0;
+        if(scrolling){
+            scrolling = false;
+            resamling = false;
+            redraw();
+        } 
+        if(selecting){
+            selecting = false;
+            lastX = 0;
+            startMoving = 0;
+            endMoving = 0;
+        }
     }
     function onMove(x, y){
-        if(dragging){
+        if(scrolling){
             var delta = x - lastX;
+
             tapePosition = Math.min(tapePosition +  delta, 0)
             gridOrigin.x = tapePosition;
             lastX = x;
@@ -632,20 +720,28 @@ function ECGPainter() {
         }
     }
     function onSelectTape(x, y){
+        var copy;
+        
+        selectedArea = undefined;
+
         $.each(containers, function(index, container){
             if(container.containPoint(x)){
                 $.each(container.tapes, function(i, tape){
-                    var copy;
                     if(-1 != (copy = tape.containPoint(x, y))){
                         if(tape === selectedTape){
                             if(selectedTapeCopy === copy){
                                 selectedTape = undefined;
                                 redraw();
                             } else {
+                                selectedTape = undefined;
+                                redraw();
+                                selectedTape = tape;
                                 selectedTapeCopy = copy;
                                 redraw();
                             }
                         } else {
+                            selectedTape = undefined;
+                            redraw();
                             selectedTape = tape;
                             selectedTapeCopy = copy;
                             redraw();
@@ -659,25 +755,37 @@ function ECGPainter() {
     *Redraw all viewer
     */
     function redraw(){
-        context.clearRect(-0,0,context.canvas.width, context.canvas.height)
         /*
         *Draw containers
         */
-        for(var i  = 0; i < lines; i++){
-            $.each(containers, function(index, container){
-                container.redraw(
-                        index*tapeWidth, 
-                        i * ECGContainer.HEIGHT, 
-                        (i * tapeWidth-gridOrigin.x)/(cellSize*FREQUENCY)
-                    );
-            });
+        if(selectedTape === undefined){
+            context.clearRect(0,
+                            0,
+                            context.canvas.width, 
+                            context.canvas.height)
+            for(var i  = 0; i < lines; i++){
+                drawECGGrid((i * tapeWidth-gridOrigin.x)/(cellSize*FREQUENCY));
+                $.each(containers, function(index, container){
+                    container.redraw(
+                            index*tapeWidth, 
+                            i * ECGContainer.HEIGHT, 
+                            (i * tapeWidth-gridOrigin.x)/(cellSize*FREQUENCY)
+                        );
+                });
+            }
         }
         /*
         *Select area on the chosen tape
         */
         if(selectedTape != undefined){
+            drawECGGrid((selectedTapeCopy * tapeWidth - gridOrigin.x)/(cellSize*FREQUENCY));
+            context.clearRect(selectedTape.x, selectedTape.copies[selectedTapeCopy], tapeWidth, 6 * squareSize)
+            selectedTape.redraw(
+                    selectedTape.x,
+                    selectedTape.copies[selectedTapeCopy],
+                    (selectedTapeCopy * tapeWidth-gridOrigin.x)/(cellSize*FREQUENCY));
             selectedTape.stroke(selectedTapeCopy);
-            selectedTape.selectArea(selectedTapeCopy, startMoving, endMoving);
+            selectedArea = selectedTape.selectArea(selectedTapeCopy, startMoving, endMoving);
         }
     }
     
@@ -706,12 +814,13 @@ function ECGPainter() {
         multiline = config.multiline;
         lines = config.lines;
         enableTimeline = config.timeline;
-        enableDescriptions = config.enableDescriptions;
+        dimension = config.dimension;
         tapeWidth = config.tapeWidth;
         annotations = config.annotations;
-
+        selectTapeCallback = config.selectTapeHandler;
+        selectSignalCallback = config.selectSignalHandler;
         updateGeometry();
-    }
+    };
     /*
     ************API**************
     *Adding new lead to viewer.
@@ -719,14 +828,14 @@ function ECGPainter() {
     */
     this.pushLead = function(lead, index){
         containers[index%tableColumns].pushTape(lead);
-    }
+    };
     /*
     ************API**************
     *Re-draw viewer
     */
     this.redraw = function(){
         redraw();
-    }
+    };
 }
 /*
 *Next code runs after DOM' loading
@@ -738,14 +847,32 @@ $(function(){
     */
     getSignal(function(data){
       var painterConfig = {
-            numberOfChannels: data.channels.length,
-            tableColumns: 2,
-            tapeWidth: 300,
-            enableDescriptions: true,
-            lines: 1,
-            timeline: true,
-            annotations: true
-      };
+            numberOfChannels: data.channels.length, /* num */
+            tableColumns: 3,        /* num */
+            tapeWidth: 200,         /* px */
+            lines: 2,               /* num */
+            timeline: true,         /* bool */
+            annotations: true,      /* bool */
+            dimension: false,       /* bool */
+            /* 
+            *Example of tape's selection hanlers. 
+            *Now it's called when user make long tap over selection. 
+            *@param interval - object { 
+            *                      begin - Date object
+            *                      end - Date object
+            *                  }
+            */
+            selectTapeHandler: function(interval){
+                alert(JSON.stringify(interval));  
+            },
+            /* 
+            *Example of signal's selection hanlers. 
+            *TODO! 
+            */ 
+            selectSignalHandler: function(values){
+                alert(values);
+            }
+        }
 
       var viewer = new ECGPainter();
       viewer.setConfig(painterConfig);
@@ -757,7 +884,9 @@ $(function(){
       viewer.redraw();
     });
     
+    
 });
+
 function getSignal(callback){
 	$.ajax({
     	url:'./data.json',
