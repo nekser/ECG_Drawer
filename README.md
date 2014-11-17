@@ -1,21 +1,22 @@
-ecgviewer.jquery.js
+#ecgviewer.jquery.js
 
 ECGViewer plugin for jquery
 
-initialization:
+##Initialization:
+```javascript
 $('#test').ECGViewer({/*viewer's configuration*/})
+```
+##Public methods:
+* **pushLead(index, object)** - to push new lead to viewer. Here index is lead's index and object is json-data
+* **setConfig(config)** - to change configuration. Here config is js object with viewer's configuration
+* **redraw()** - to redraw all viewer
 
-Public methods:
-
-pushLead(index, object), where index is lead's index and object is json-data
-setConfig(config), where config is js object with viewer's configuration
-redraw(), to redraw all viewer
-
-To call method:
-
-$('#test').ECGViewer('methoname', args...)
-
-Current version of viewer's configuration object:
+##To call method:
+```javascript
+$('#test').ECGViewer('methodname', args...)
+```
+##Current version of viewer's configuration object:
+```javascript
     {
         numberOfChannels: 6, /* num */
         tableColumns: 3,        /* num */
@@ -34,3 +35,4 @@ Current version of viewer's configuration object:
         */
         selectTapeHandler: function(interval){},
     }
+```
