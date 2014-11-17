@@ -591,8 +591,8 @@
     */ 
     function longTap(event){
         if(selectedArea != undefined){
-            if(selectTapeCallback != undefined){
-                selectTapeCallback(selectedArea);
+            if(settings.selectTapeHandler != undefined){
+                settings.selectTapeHandler(selectedArea);
             }
         }
     }
