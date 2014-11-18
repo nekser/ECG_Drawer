@@ -354,8 +354,8 @@
             context.globalAlpha = 1;
           
             return  {
-                        begin: this.getTime(start),
-                        end: this.getTime(end)
+                        begin: this.getTime(start + copy*settings.tapeWidth),
+                        end: this.getTime(end + copy*settings.tapeWidth)
                     };
            
         },
